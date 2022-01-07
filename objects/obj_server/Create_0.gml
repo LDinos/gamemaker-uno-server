@@ -22,7 +22,10 @@
 #macro NET_BLACKLISTED 10
 #macro NET_ALREADY_STARTED 11
 #macro NET_DISCONNECT_CHANGE_TURN 12
-global.version = "0.3"
+#macro NET_GET_RULE_UPDATE 13
+#macro NET_RELAY_RULE_UPDATE 14
+#macro NET_USER_INTRODUCTION 15
+global.version = "0.4"
 
 function autocomplete_find(text) {
 	var list_commands = variable_struct_get_names(command_list)
@@ -71,6 +74,10 @@ function create_deck() {
 	ds_list_shuffle(deck)
 	add_line(LOG, "Deck created. Num cards: " + string(ds_list_size(deck)))
 }
+//Rules
+RULE_draw_until_play = false;
+RULE_allow_stacks = true;
+RULE_4stack_on_2 = true;
 
 //Log related
 autocomplete_text = ""
@@ -109,7 +116,7 @@ if (server < 0) {
 
 
 function received_packet(c_buffer, c_id, c_buffer_size) {
-	var type = buffer_read_safe(c_buffer, c_buffer_size,buffer_u8)
+	var type = buffer_read(c_buffer, buffer_u8)
 	switch(type) {
 		case NET_GET_NAME:
 			var name = buffer_read_safe(c_buffer, c_buffer_size, buffer_string)
@@ -164,9 +171,19 @@ function received_packet(c_buffer, c_id, c_buffer_size) {
 					network_send_packet(sock,buffer,buffer_tell(buffer))
 				}
 				must_draw_cards = 0
-				next_turn()
+				if (!RULE_draw_until_play || iend > 1) next_turn()
 			}
 			break;
+		case NET_GET_RULE_UPDATE:
+			RULE_draw_until_play = buffer_read(c_buffer,buffer_bool)
+			RULE_allow_stacks = buffer_read(c_buffer,buffer_bool)
+			RULE_4stack_on_2 = buffer_read(c_buffer,buffer_bool)
+			for (var j = 0; j < num_players; j++) {
+				var sock = player_list[| j]
+				relay_rules(sock)
+			}
+			break;
+		default: add_line(ALERT, type)
 	}
 }
 
@@ -199,7 +216,10 @@ function play_card(card, gameover = false) {
 		if get_card_number(card) == SKIP how_much = 2
 		else if get_card_number(card) == PLUSTWO must_draw_cards+=2
 		else if get_card_number(card) == PLUSFOURCOLOR must_draw_cards+=4
-		else if (get_card_number(card) == INVERT) player_turn_clockwise = !player_turn_clockwise
+		else if (get_card_number(card) == INVERT) {
+			player_turn_clockwise = !player_turn_clockwise
+			if (num_players == 2) how_much = 2
+		}
 		repeat(how_much) next_turn()
 	} else stop_game()
 }
@@ -239,6 +259,15 @@ function deck_deplete_card(num = 1) {
 		ds_list_delete(deck, 0)
 		if (ds_list_size(deck) == 0) create_deck()
 	}
+}
+
+function relay_rules(sock) {
+		buffer_seek(buffer,buffer_seek_start,0)
+		buffer_write(buffer,buffer_u8,NET_RELAY_RULE_UPDATE)
+		buffer_write(buffer,buffer_bool, RULE_draw_until_play)
+		buffer_write(buffer,buffer_bool, RULE_allow_stacks)
+		buffer_write(buffer,buffer_bool, RULE_4stack_on_2)
+		network_send_packet(sock,buffer,buffer_tell(buffer))
 }
 
 function stop_game() {

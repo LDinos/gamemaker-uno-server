@@ -22,6 +22,10 @@ switch(t) {
 			ds_list_add(player_ip_list, ip)
 			ds_list_add(player_name_list, string(sock))
 			ds_list_add(card_number, 0)
+			relay_rules(sock)
+				buffer_seek(buffer,buffer_seek_start,0)
+				buffer_write(buffer,buffer_u8,NET_USER_INTRODUCTION)
+				network_send_packet(sock,buffer,buffer_tell(buffer))	
 		}
 		num_players++
         break;

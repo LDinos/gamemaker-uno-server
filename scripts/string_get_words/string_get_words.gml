@@ -1,4 +1,4 @@
-//Divides all words (spaces) and gives an array size of words
+//Divides all words (spaces) and gives an array size of number of words
 function string_get_words(text){
 	var s = string_length(text)
 	var arr = []
