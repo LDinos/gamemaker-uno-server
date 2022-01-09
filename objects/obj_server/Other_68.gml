@@ -33,8 +33,9 @@ switch(t) {
 		var sock = ds_map_find_value(async_load, "socket")
 		var i = ds_list_find_index(player_list, sock)
 		num_players--;
-		if (i != -1) {
+		if (i != -1) { //make sure the user has made an introduction to the server
 			add_line(LOG, "Socket disconnect (ID: " + string(sock) + ", Index: " + string(i) + ")")
+			var p_name = player_name_list[| i]
 			ds_list_delete(player_list, i)
 			ds_list_delete(player_name_list, i)
 			ds_list_delete(player_ip_list, i)
@@ -53,6 +54,14 @@ switch(t) {
 						network_send_packet(sock,buffer,buffer_tell(buffer))
 					}
 				}
+			}
+			for (var j = 0; j < num_players; j++) {
+				var sock = player_list[| j]
+				buffer_seek(buffer,buffer_seek_start,0)
+				buffer_write(buffer,buffer_u8,NET_RELAY_MESSAGE)
+				buffer_write(buffer,buffer_bool,true)
+				buffer_write(buffer,buffer_string,p_name + " disconnected.")
+				network_send_packet(sock,buffer,buffer_tell(buffer))
 			}
 		}	
 		break;
