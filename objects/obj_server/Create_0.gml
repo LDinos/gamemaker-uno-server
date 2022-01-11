@@ -101,8 +101,11 @@ player_list = ds_list_create()
 player_name_list = ds_list_create()
 player_ip_list = ds_list_create()
 card_number = ds_list_create()
+player_hand_list = ds_list_create()
+ds_list_clear(player_hand_list) //internally some values can get defined as 0 instead of undefined and its important that doesnt happen so calling this fixes it
 num_players = 0
 must_draw_cards = 0
+pile_last_card = -1 //tracks the current card on top of the pile
 
 buffer = buffer_create(1,buffer_grow,1)
 network_set_config(network_config_connect_timeout, 6000);
@@ -175,26 +178,41 @@ function received_packet(c_buffer, c_id, c_buffer_size) {
 			//check to make sure that it is the turn of the player playing the card
 			if verify_player_permission(c_id, permission_type.IS_PLAYERS_TURN) {
 				if game_started {
+					
 					var card = buffer_read_safe(c_buffer, c_buffer_size,buffer_u8)
-					
 					var index = ds_list_find_index(player_list, c_id)
-					card_number[| index]--
 					
-					var gameover = false //assume no game over
-					//look through all the players hands, if one of them is empty, gameover is true
-					for (i = 0; i < ds_list_size(card_number); i++) {
-						if card_number[| i] <= 0 {
-							gameover = true
-							break;
+					if card_in_hand(index, card) {
+						if can_play_card(card) { //actual card playing code in this if statement
+						
+							card_number[| index]--
+							remove_card_from_hand_list(index, card)
+					
+							var gameover = false //assume no game over
+							//look through all the players hands, if one of them is empty, gameover is true
+							for (i = 0; i < ds_list_size(card_number); i++) {
+								if card_number[| i] <= 0 {
+									gameover = true
+									break;
+								}
+							}
+							play_card(card, gameover)
+							
+						} else {
+							var instigating_player = get_player_name(c_id)
+							add_line(ALERT, string(instigating_player) + " cannot play card " + string(card))
 						}
+						
+					} else {
+						var instigating_player = get_player_name(c_id)
+						add_line(ALERT, string(instigating_player) + " tried to play a card not in their hand.")
 					}
-					play_card(card, gameover)
+				
 				}
 				
 			} else {
 				var instigating_player = get_player_name(c_id)
-				add_line(ALERT, string(instigating_player) + " tried to play a card, but it is not their turn.")
-				//add_line(ALERT, string(instigating_player) + " tried to play '" + string(card) + "', but it is not their turn.")	//can't use this as we don't actually read the buffer if it isnt the player's turn
+				add_line(ALERT, string(instigating_player) + " can't play - not their turn.")
 			}
 			
 			break;
@@ -213,6 +231,9 @@ function received_packet(c_buffer, c_id, c_buffer_size) {
 							for(var i = 0; i < iend; i++) {
 								card_number[| j]++
 								var card = deck[| 0]
+								
+								add_card_to_hand_list(j, card)
+								
 								buffer_write(buffer,buffer_u8,card)
 								deck_deplete_card()
 							}
@@ -224,7 +245,7 @@ function received_packet(c_buffer, c_id, c_buffer_size) {
 				}
 			} else {
 				var instigating_player = get_player_name(c_id)
-				add_line(ALERT, string(instigating_player) + " tried to draw, but it is not their turn.")	
+				add_line(ALERT, string(instigating_player) + " can't draw - not their turn.")	
 			}
 			
 			break;
@@ -293,6 +314,9 @@ function update_players() {
 }
 
 function play_card(card, gameover = false) {
+	
+	pile_last_card = card
+	
 	for (var j = 0; j < num_players; j++) {
 		var sock = player_list[| j]
 		buffer_seek(buffer,buffer_seek_start,0)
@@ -320,6 +344,9 @@ function initial_give_cards() {
 	deck_deplete_card()
 	if (pile_first == PLUSFOUR) pile_first = PLUSFOURCOLOR + 15*(irandom(3))
 	else if (pile_first == WILDCARD) pile_first = WILDCARDCOLOR + 15*(irandom(3))
+	
+	pile_last_card = pile_first
+	
 	for (var j = 0; j < num_players; j++) {
 		card_number[| j] = 7
 		var sock = player_list[| j]
@@ -329,6 +356,9 @@ function initial_give_cards() {
 		for(var i = 0; i < 7; i++) //7 = initial cards
 		{
 			var card = deck[| i]
+			
+			add_card_to_hand_list(j, card)
+			
 			buffer_write(buffer,buffer_u8,card)
 			deck_deplete_card()
 		}
