@@ -1,12 +1,16 @@
 {
   "resources": [
+    {"id":{"name":"can_play_card","path":"scripts/can_play_card/can_play_card.yy",},"order":9,},
     {"id":{"name":"is_letter","path":"scripts/is_letter/is_letter.yy",},"order":3,},
+    {"id":{"name":"get_player_stuffs","path":"scripts/get_player_stuffs/get_player_stuffs.yy",},"order":7,},
     {"id":{"name":"get_card_color","path":"scripts/get_card_color/get_card_color.yy",},"order":1,},
     {"id":{"name":"string_get_words","path":"scripts/string_get_words/string_get_words.yy",},"order":5,},
     {"id":{"name":"initialize_commands","path":"scripts/initialize_commands/initialize_commands.yy",},"order":2,},
+    {"id":{"name":"verify_player_permission","path":"scripts/verify_player_permission/verify_player_permission.yy",},"order":6,},
     {"id":{"name":"obj_server","path":"objects/obj_server/obj_server.yy",},"order":0,},
     {"id":{"name":"buffer_read_safe","path":"scripts/buffer_read_safe/buffer_read_safe.yy",},"order":4,},
     {"id":{"name":"get_card_number","path":"scripts/get_card_number/get_card_number.yy",},"order":0,},
+    {"id":{"name":"card_in_hand","path":"scripts/card_in_hand/card_in_hand.yy",},"order":8,},
     {"id":{"name":"Room1","path":"rooms/Room1/Room1.yy",},"order":0,},
   ],
   "Options": [

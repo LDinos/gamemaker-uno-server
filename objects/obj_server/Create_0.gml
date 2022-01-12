@@ -101,8 +101,11 @@ player_list = ds_list_create()
 player_name_list = ds_list_create()
 player_ip_list = ds_list_create()
 card_number = ds_list_create()
+player_hand_list = ds_list_create()
+ds_list_clear(player_hand_list) //internally some values can get defined as 0 instead of undefined and its important that doesnt happen so calling this fixes it
 num_players = 0
 must_draw_cards = 0
+pile_last_card = -1 //tracks the current card on top of the pile
 
 buffer = buffer_create(1,buffer_grow,1)
 network_set_config(network_config_connect_timeout, 6000);
@@ -148,64 +151,149 @@ function received_packet(c_buffer, c_id, c_buffer_size) {
 			}
 			break;
 		case NET_START_GAME:
-			player_turn = -1
-			player_turn_clockwise = true
-			must_draw_cards = 0
-			game_started = true
-			add_line(ALERT, "Game started.")
-			initial_give_cards()
-			break;
-		case NET_GET_PLAYED_CARDS:
-			if game_started {
-				var card = buffer_read_safe(c_buffer, c_buffer_size,buffer_u8)
-				var gameover = buffer_read_safe(c_buffer, c_buffer_size,buffer_bool)
-				var index = ds_list_find_index(player_list, c_id)
-				card_number[| index]--
-				play_card(card, gameover)
+			//check to make sure the player is the host before beginning the game
+			if verify_player_permission(c_id, permission_type.IS_HOST) {
+				
+				if !(game_started) {
+					player_turn = -1
+					player_turn_clockwise = true
+					must_draw_cards = 0
+					game_started = true
+					add_line(ALERT, "Game started.")
+					initial_give_cards()
+					
+				} else {
+					var instigating_player = get_player_name(c_id)
+					add_line(ALERT, string(instigating_player) + " tried to start the game, but the game has already begun.")
+				}
+
+			} else {
+				var instigating_player = get_player_name(c_id)
+				add_line(ALERT, string(instigating_player) + " tried to start the game, but is not host.")
 			}
+
 			break;
+			
+		case NET_GET_PLAYED_CARDS:
+			//check to make sure that it is the turn of the player playing the card
+			if verify_player_permission(c_id, permission_type.IS_PLAYERS_TURN) {
+				if game_started {
+					
+					var card = buffer_read_safe(c_buffer, c_buffer_size,buffer_u8)
+					var index = ds_list_find_index(player_list, c_id)
+					
+					if card_in_hand(index, card) {
+						if can_play_card(card) { //actual card playing code in this if statement
+						
+							card_number[| index]--
+							remove_card_from_hand_list(index, card)
+					
+							var gameover = false //assume no game over
+							//look through all the players hands, if one of them is empty, gameover is true
+							for (i = 0; i < ds_list_size(card_number); i++) {
+								if card_number[| i] <= 0 {
+									gameover = true
+									break;
+								}
+							}
+							play_card(card, gameover)
+							
+						} else {
+							var instigating_player = get_player_name(c_id)
+							add_line(ALERT, string(instigating_player) + " cannot play card " + string(card))
+						}
+						
+					} else {
+						var instigating_player = get_player_name(c_id)
+						add_line(ALERT, string(instigating_player) + " tried to play a card not in their hand.")
+					}
+				
+				}
+				
+			} else {
+				var instigating_player = get_player_name(c_id)
+				add_line(ALERT, string(instigating_player) + " can't play - not their turn.")
+			}
+			
+			break;
+			
 		case NET_GET_DRAW_CARDS:
-			if game_started {
-				var iend = must_draw_cards
-				if (iend == 0) iend = 1
+			//check to make sure that it is the turn of the player drawing the card
+			if verify_player_permission(c_id, permission_type.IS_PLAYERS_TURN) {
+				if game_started {
+					var iend = must_draw_cards
+					if (iend == 0) iend = 1
+					for (var j = 0; j < num_players; j++) {
+						var sock = player_list[| j]
+						buffer_seek(buffer,buffer_seek_start,0)
+						buffer_write(buffer,buffer_u8,NET_SEND_DRAW_CARDS)
+						if (j == player_turn) {
+							for(var i = 0; i < iend; i++) {
+								card_number[| j]++
+								var card = deck[| 0]
+								
+								add_card_to_hand_list(j, card)
+								
+								buffer_write(buffer,buffer_u8,card)
+								deck_deplete_card()
+							}
+						}
+						network_send_packet(sock,buffer,buffer_tell(buffer))
+					}
+					must_draw_cards = 0
+					if (!RULE_draw_until_play || iend > 1) next_turn()
+				}
+			} else {
+				var instigating_player = get_player_name(c_id)
+				add_line(ALERT, string(instigating_player) + " can't draw - not their turn.")	
+			}
+			
+			break;
+			
+		case NET_GET_RULE_UPDATE:
+			//check if player is host before actually changing the rules
+			if verify_player_permission(c_id, permission_type.IS_HOST) {
+				
+				if !(game_started) {
+					RULE_draw_until_play = buffer_read(c_buffer,buffer_bool)
+					RULE_allow_stacks = buffer_read(c_buffer,buffer_bool)
+					RULE_4stack_on_2 = buffer_read(c_buffer,buffer_bool)
+					for (var j = 0; j < num_players; j++) {
+						var sock = player_list[| j]
+						relay_rules(sock)
+					}
+					
+				} else {
+				var instigating_player = get_player_name(c_id)
+				add_line(ALERT, string(instigating_player) + " tried to modify rules, but game has started.")	
+				}
+				
+			} else {
+				var instigating_player = get_player_name(c_id)
+				add_line(ALERT, string(instigating_player) + " tried to modify rules, but is not host.")	
+			}
+			
+			break;
+			
+		case NET_GET_MESSAGE:
+			var text = buffer_read(c_buffer,buffer_string)
+			
+			if string_length(text) <= 99 { //max message length
 				for (var j = 0; j < num_players; j++) {
 					var sock = player_list[| j]
 					buffer_seek(buffer,buffer_seek_start,0)
-					buffer_write(buffer,buffer_u8,NET_SEND_DRAW_CARDS)
-					if (j == player_turn) {
-						for(var i = 0; i < iend; i++) {
-							card_number[| j]++
-							var card = deck[| 0]
-							buffer_write(buffer,buffer_u8,card)
-							deck_deplete_card()
-						}
-					}
+					buffer_write(buffer,buffer_u8,NET_RELAY_MESSAGE)
+					buffer_write(buffer,buffer_bool,false)
+					buffer_write(buffer,buffer_string,text)
 					network_send_packet(sock,buffer,buffer_tell(buffer))
 				}
-				must_draw_cards = 0
-				if (!RULE_draw_until_play || iend > 1) next_turn()
+			} else {
+				var instigating_player = get_player_name(c_id)
+				add_line(ALERT, string(instigating_player) + " sent a chat message that was too long.")	
 			}
+			
 			break;
-		case NET_GET_RULE_UPDATE:
-			RULE_draw_until_play = buffer_read(c_buffer,buffer_bool)
-			RULE_allow_stacks = buffer_read(c_buffer,buffer_bool)
-			RULE_4stack_on_2 = buffer_read(c_buffer,buffer_bool)
-			for (var j = 0; j < num_players; j++) {
-				var sock = player_list[| j]
-				relay_rules(sock)
-			}
-			break;
-		case NET_GET_MESSAGE:
-			var text = buffer_read(c_buffer,buffer_string)
-			for (var j = 0; j < num_players; j++) {
-				var sock = player_list[| j]
-				buffer_seek(buffer,buffer_seek_start,0)
-				buffer_write(buffer,buffer_u8,NET_RELAY_MESSAGE)
-				buffer_write(buffer,buffer_bool,false)
-				buffer_write(buffer,buffer_string,text)
-				network_send_packet(sock,buffer,buffer_tell(buffer))
-			}
-			break;
+
 		default: add_line(ALERT, type)
 	}
 }
@@ -226,6 +314,9 @@ function update_players() {
 }
 
 function play_card(card, gameover = false) {
+	
+	pile_last_card = card
+	
 	for (var j = 0; j < num_players; j++) {
 		var sock = player_list[| j]
 		buffer_seek(buffer,buffer_seek_start,0)
@@ -253,6 +344,9 @@ function initial_give_cards() {
 	deck_deplete_card()
 	if (pile_first == PLUSFOUR) pile_first = PLUSFOURCOLOR + 15*(irandom(3))
 	else if (pile_first == WILDCARD) pile_first = WILDCARDCOLOR + 15*(irandom(3))
+	
+	pile_last_card = pile_first
+	
 	for (var j = 0; j < num_players; j++) {
 		card_number[| j] = 7
 		var sock = player_list[| j]
@@ -262,6 +356,9 @@ function initial_give_cards() {
 		for(var i = 0; i < 7; i++) //7 = initial cards
 		{
 			var card = deck[| i]
+			
+			add_card_to_hand_list(j, card)
+			
 			buffer_write(buffer,buffer_u8,card)
 			deck_deplete_card()
 		}
@@ -302,3 +399,6 @@ function stop_game() {
 	create_deck()
 	add_line(ALERT, "Game end." )
 }
+
+
+window_set_size(320,320)
