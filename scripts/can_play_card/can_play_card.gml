@@ -13,7 +13,7 @@ function can_play_card(card){
 	if (mycard_color != BLACK) and ((mycard_color == pile_color) || (mycard_number == pile_number) || (card % 15 == WILDCARDCOLOR) || (card % 15 == PLUSFOURCOLOR) || (pile_last_card == -1)) {
 		if (must_draw_cards != 0) { //if we have to draw cards because of plus two or plus 4
 			if (RULE_allow_stacks) {
-				if (mycard_number == pile_number) || (card == PLUSFOUR && RULE_4stack_on_2) { //if +4 or plus two on plus two
+				if (mycard_number == pile_number) || ((card % 15 == PLUSFOURCOLOR) && RULE_4stack_on_2) { //if +4 or plus two on plus two
 					can_play = true
 				}
 			}
