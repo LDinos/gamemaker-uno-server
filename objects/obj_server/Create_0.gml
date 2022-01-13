@@ -27,7 +27,8 @@
 #macro NET_USER_INTRODUCTION 15
 #macro NET_GET_MESSAGE 16
 #macro NET_RELAY_MESSAGE 17
-global.version = "0.6"
+#macro NET_STOP_GAME 18
+global.version = "0.7"
 
 function autocomplete_find(text) {
 	var list_commands = variable_struct_get_names(command_list)
@@ -173,7 +174,17 @@ function received_packet(c_buffer, c_id, c_buffer_size) {
 			}
 
 			break;
-			
+		case NET_STOP_GAME:
+			if verify_player_permission(c_id, permission_type.IS_HOST) {
+				for (var j = 0; j < num_players; j++) {
+						var sock = player_list[| j]
+						buffer_seek(buffer,buffer_seek_start,0)
+						buffer_write(buffer,buffer_u8,NET_STOP_GAME)
+						network_send_packet(sock,buffer,buffer_tell(buffer))
+					}
+			}
+			stop_game()
+			break;
 		case NET_GET_PLAYED_CARDS:
 			//check to make sure that it is the turn of the player playing the card
 			if verify_player_permission(c_id, permission_type.IS_PLAYERS_TURN) {
