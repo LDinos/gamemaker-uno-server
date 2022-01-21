@@ -26,20 +26,21 @@ switch(t) {
 				buffer_seek(buffer,buffer_seek_start,0)
 				buffer_write(buffer,buffer_u8,NET_USER_INTRODUCTION)
 				network_send_packet(sock,buffer,buffer_tell(buffer))	
-		}
-		num_players++
+			num_players++
+		}	
         break;
     case network_type_disconnect:
 		var sock = ds_map_find_value(async_load, "socket")
 		var i = ds_list_find_index(player_list, sock)
-		num_players--;
 		if (i != -1) { //make sure the user has made an introduction to the server
 			add_line(LOG, "Socket disconnect (ID: " + string(sock) + ", Index: " + string(i) + ")")
+			num_players--;
 			var p_name = player_name_list[| i]
 			ds_list_delete(player_list, i)
 			ds_list_delete(player_name_list, i)
 			ds_list_delete(player_ip_list, i)
 			ds_list_delete(card_number, i)
+			ds_list_delete(player_hand_list, i)
 			update_players()
 			if (game_started) {
 				if (num_players <= 1) stop_game()

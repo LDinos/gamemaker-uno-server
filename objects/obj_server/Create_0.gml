@@ -1,5 +1,6 @@
 /// @description
 #macro MAX_LINES 17
+#macro MAX_CLIENTS 10
 #macro num_cards 62
 #macro ERROR 0
 #macro SUCCESS 1
@@ -28,7 +29,7 @@
 #macro NET_GET_MESSAGE 16
 #macro NET_RELAY_MESSAGE 17
 #macro NET_STOP_GAME 18
-global.version = "0.7"
+global.version = "0.8.1"
 
 function autocomplete_find(text) {
 	var list_commands = variable_struct_get_names(command_list)
@@ -112,7 +113,7 @@ buffer = buffer_create(1,buffer_grow,1)
 network_set_config(network_config_connect_timeout, 6000);
 
 var port = 6969
-server = network_create_server(network_socket_tcp, port, 10)
+server = network_create_server(network_socket_tcp, port, MAX_CLIENTS)
 if (server < 0) {
 	add_line(ERROR, "Unable to create server. Port may be already in use?")
 } else {
