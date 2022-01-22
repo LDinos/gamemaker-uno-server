@@ -29,7 +29,7 @@
 #macro NET_GET_MESSAGE 16
 #macro NET_RELAY_MESSAGE 17
 #macro NET_STOP_GAME 18
-global.version = "0.8.1"
+global.version = "0.9" //server always checks clients up to its decimal point. eg a client 0.2.2 can join 0.2 server
 
 function autocomplete_find(text) {
 	var list_commands = variable_struct_get_names(command_list)
@@ -86,6 +86,8 @@ RULE_4stack_on_2 = true;
 //Log related
 autocomplete_text = ""
 log_lines = []
+input_list = [] //array that keeps all strings written by the server user
+input_index = 0 //index for when the user presses up/down to find latest command that was written
 command_max_length = 30
 backspace_lag = 0
 blink = "|"
@@ -131,7 +133,7 @@ function received_packet(c_buffer, c_id, c_buffer_size) {
 			if !(game_started) {
 				var pos = ds_list_find_index(player_name_list, string(c_id))
 				player_name_list[| pos] = name
-				if (global.version == ver) {
+				if version_is_same(ver) {
 					update_players()
 					for (var j = 0; j < num_players; j++) {
 						var sock = player_list[| j]
@@ -400,6 +402,16 @@ function relay_rules(sock) {
 		buffer_write(buffer,buffer_bool, RULE_allow_stacks)
 		buffer_write(buffer,buffer_bool, RULE_4stack_on_2)
 		network_send_packet(sock,buffer,buffer_tell(buffer))
+}
+
+function version_is_same(client_ver) {
+	if string_length(client_ver) < string_length(global.version) return false;
+	for(var i = 0; i < string_length(global.version); i++) {
+		if string_char_at(client_ver,i+1) != string_char_at(global.version,i+1) {
+			return false;
+		}
+	}
+	return true
 }
 
 function stop_game() {

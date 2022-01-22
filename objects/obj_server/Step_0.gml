@@ -2,6 +2,8 @@
 if (backspace_lag > 0) backspace_lag--
 if keyboard_check_pressed(vk_enter) {
 	add_line(USER_TYPED, "> "+input)
+	array_push(input_list, input)
+	input_index = array_length(input_list)
 	var input_arr = string_get_words(input)
 	var command = input_arr[0]
 	var args = ""

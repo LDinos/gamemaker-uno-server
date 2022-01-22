@@ -19,7 +19,7 @@ function unban_function(ip = "") {
 }
 
 
-function ban_function(ip = "") {
+function banip_function(ip = "") {
 	if ip == ""  add_line(ERROR, "Missing ip argument.")
 	else {
 		var pos = ds_list_find_index(banned_ips, ip)
@@ -35,6 +35,22 @@ function ban_function(ip = "") {
 			}
 		}
 		else add_line(USER_ANSWER, ip + " is already banned!")
+	}
+}
+
+function ban_function(name = "") {
+	if name == "" add_line(ERROR, "Missing name argument.")
+	else {
+		var is_online = ds_list_find_index(player_name_list, name)
+		if (is_online != -1) {
+				var ip = ds_list_find_value(player_ip_list, is_online)
+				ds_list_add(banned_ips, ip)
+				buffer_seek(buffer,buffer_seek_start,0)
+				buffer_write(buffer,buffer_u8,NET_BLACKLISTED)
+				buffer_write(buffer,buffer_string,"Your IP is banned from this server")
+				network_send_packet(player_list[| is_online],buffer,buffer_tell(buffer))	
+			}
+		else add_line(ERROR, "No user found with that name.")
 	}
 }
 
@@ -75,9 +91,14 @@ function clear_function() {
 	log_lines = []
 }
 
+function version_function() {
+	add_line(USER_ANSWER, global.version)
+}
+
 function initialize_commands(){
 	command_list = {
-		banip : ban_function,
+		ban : ban_function,
+		banip : banip_function,
 		unban : unban_function,
 		banlist : banlist_function,
 		list : list_function,
@@ -86,6 +107,7 @@ function initialize_commands(){
 		deck : deck_function,
 		clear : clear_function,
 		players : players_function,
-		whois : whois_function
+		whois : whois_function,
+		ver : version_function
 	}
 }
