@@ -1,4 +1,6 @@
 /// @description
+
+#region MACROS
 #macro MAX_LINES 17
 #macro MAX_CLIENTS 10
 #macro num_cards 62
@@ -29,8 +31,12 @@
 #macro NET_GET_MESSAGE 16
 #macro NET_RELAY_MESSAGE 17
 #macro NET_STOP_GAME 18
-global.version = "0.9" //server always checks clients up to its decimal point. eg a client 0.2.2 can join 0.2 server
+#endregion
 
+global.version = "0.10" //server always checks clients up to its decimal point. eg a client 0.2.2 can join 0.2 server
+window_set_size(320,320)
+
+#region INITIAL FUNCTIONS
 function autocomplete_find(text) {
 	var list_commands = variable_struct_get_names(command_list)
 	var bestchars = 0
@@ -78,6 +84,11 @@ function create_deck() {
 	ds_list_shuffle(deck)
 	add_line(LOG, "Deck created. Num cards: " + string(ds_list_size(deck)))
 }
+	
+#endregion
+
+#region INITIAL VARIABLES
+
 //Rules
 RULE_draw_until_play = false;
 RULE_allow_stacks = true;
@@ -114,6 +125,8 @@ pile_last_card = -1 //tracks the current card on top of the pile
 buffer = buffer_create(1,buffer_grow,1)
 network_set_config(network_config_connect_timeout, 6000);
 
+#endregion
+
 var port = 6969
 server = network_create_server(network_socket_tcp, port, MAX_CLIENTS)
 if (server < 0) {
@@ -123,6 +136,7 @@ if (server < 0) {
 	create_deck()
 }
 
+#region LATTER FUNCTIONS
 
 function received_packet(c_buffer, c_id, c_buffer_size) {
 	var type = buffer_read(c_buffer, buffer_u8)
@@ -135,29 +149,18 @@ function received_packet(c_buffer, c_id, c_buffer_size) {
 				player_name_list[| pos] = name
 				if version_is_same(ver) {
 					update_players()
-					for (var j = 0; j < num_players; j++) {
-						var sock = player_list[| j]
-						if (c_id != sock) {
-							buffer_seek(buffer,buffer_seek_start,0)
-							buffer_write(buffer,buffer_u8,NET_RELAY_MESSAGE)
-							buffer_write(buffer,buffer_bool,true)
-							buffer_write(buffer,buffer_string,name + " connected.")
-							network_send_packet(sock,buffer,buffer_tell(buffer))
-						}
-					}
+					buffer_process(NET_RELAY_MESSAGE, [buffer_bool, buffer_string], [true, name + " connected."])
+					network_send_packet_all(c_id)
 				} else {
 					add_line(ALERT, string(c_id) + " has wrong version ("+ver + " | " +global.version+").")
-					buffer_seek(buffer,buffer_seek_start,0)
-					buffer_write(buffer,buffer_u8,NET_WRONG_VER)
-					buffer_write(buffer,buffer_string,"Wrong version\nYours : " + ver + "\nServer : " + global.version)
+					buffer_process(NET_WRONG_VER, [buffer_string], ["Wrong version\nYours : " + ver + "\nServer : " + global.version])
 					network_send_packet(c_id,buffer,buffer_tell(buffer))
 				}
 			}
 			break;
 		case NET_START_GAME:
 			//check to make sure the player is the host before beginning the game
-			if verify_player_permission(c_id, permission_type.IS_HOST) {
-				
+			if verify_player_permission(c_id, permission_type.IS_HOST) {		
 				if !(game_started) {
 					player_turn = -1
 					player_turn_clockwise = true
@@ -179,29 +182,21 @@ function received_packet(c_buffer, c_id, c_buffer_size) {
 			break;
 		case NET_STOP_GAME:
 			if verify_player_permission(c_id, permission_type.IS_HOST) {
-				for (var j = 0; j < num_players; j++) {
-						var sock = player_list[| j]
-						buffer_seek(buffer,buffer_seek_start,0)
-						buffer_write(buffer,buffer_u8,NET_STOP_GAME)
-						network_send_packet(sock,buffer,buffer_tell(buffer))
-					}
+				buffer_process(NET_STOP_GAME,[],[])
+				network_send_packet_all()
 			}
 			stop_game()
 			break;
 		case NET_GET_PLAYED_CARDS:
 			//check to make sure that it is the turn of the player playing the card
 			if verify_player_permission(c_id, permission_type.IS_PLAYERS_TURN) {
-				if game_started {
-					
+				if (game_started) {	
 					var card = buffer_read_safe(c_buffer, c_buffer_size,buffer_u8)
-					var index = ds_list_find_index(player_list, c_id)
-					
+					var index = ds_list_find_index(player_list, c_id)	
 					if card_in_hand(index, card) {
 						if can_play_card(card) { //actual card playing code in this if statement
-						
 							card_number[| index]--
 							remove_card_from_hand_list(index, card)
-					
 							var gameover = false //assume no game over
 							//look through all the players hands, if one of them is empty, gameover is true
 							for (i = 0; i < ds_list_size(card_number); i++) {
@@ -229,12 +224,11 @@ function received_packet(c_buffer, c_id, c_buffer_size) {
 				add_line(ALERT, string(instigating_player) + " can't play - not their turn.")
 			}
 			
-			break;
-			
+			break;		
 		case NET_GET_DRAW_CARDS:
 			//check to make sure that it is the turn of the player drawing the card
 			if verify_player_permission(c_id, permission_type.IS_PLAYERS_TURN) {
-				if game_started {
+				if (game_started) {
 					var iend = must_draw_cards
 					if (iend == 0) iend = 1
 					for (var j = 0; j < num_players; j++) {
@@ -263,51 +257,34 @@ function received_packet(c_buffer, c_id, c_buffer_size) {
 			}
 			
 			break;
-			
 		case NET_GET_RULE_UPDATE:
 			//check if player is host before actually changing the rules
 			if verify_player_permission(c_id, permission_type.IS_HOST) {
-				
 				if !(game_started) {
 					RULE_draw_until_play = buffer_read(c_buffer,buffer_bool)
 					RULE_allow_stacks = buffer_read(c_buffer,buffer_bool)
 					RULE_4stack_on_2 = buffer_read(c_buffer,buffer_bool)
-					for (var j = 0; j < num_players; j++) {
-						var sock = player_list[| j]
-						relay_rules(sock)
-					}
-					
+					relay_rules()
 				} else {
-				var instigating_player = get_player_name(c_id)
-				add_line(ALERT, string(instigating_player) + " tried to modify rules, but game has started.")	
+					var instigating_player = get_player_name(c_id)
+					add_line(ALERT, string(instigating_player) + " tried to modify rules, but game has started.")	
 				}
 				
 			} else {
 				var instigating_player = get_player_name(c_id)
 				add_line(ALERT, string(instigating_player) + " tried to modify rules, but is not host.")	
 			}
-			
-			break;
-			
+			break;	
 		case NET_GET_MESSAGE:
 			var text = buffer_read(c_buffer,buffer_string)
-			
 			if string_length(text) <= 99 { //max message length
-				for (var j = 0; j < num_players; j++) {
-					var sock = player_list[| j]
-					buffer_seek(buffer,buffer_seek_start,0)
-					buffer_write(buffer,buffer_u8,NET_RELAY_MESSAGE)
-					buffer_write(buffer,buffer_bool,false)
-					buffer_write(buffer,buffer_string,text)
-					network_send_packet(sock,buffer,buffer_tell(buffer))
-				}
+					buffer_process(NET_RELAY_MESSAGE, [buffer_bool, buffer_string], [false, text])
+					network_send_packet_all()
 			} else {
 				var instigating_player = get_player_name(c_id)
 				add_line(ALERT, string(instigating_player) + " sent a chat message that was too long.")	
-			}
-			
+			}	
 			break;
-
 		default: add_line(ALERT, type)
 	}
 }
@@ -328,17 +305,9 @@ function update_players() {
 }
 
 function play_card(card, gameover = false) {
-	
 	pile_last_card = card
-	
-	for (var j = 0; j < num_players; j++) {
-		var sock = player_list[| j]
-		buffer_seek(buffer,buffer_seek_start,0)
-		buffer_write(buffer,buffer_u8,NET_PLAY_CARDS)
-		buffer_write(buffer,buffer_u8,card)
-		buffer_write(buffer,buffer_bool,gameover)
-		network_send_packet(sock,buffer,buffer_tell(buffer))
-	}
+	buffer_process(NET_PLAY_CARDS, [buffer_u8, buffer_bool], [card, gameover])
+	network_send_packet_all()
 	if (!gameover) {
 		var how_much = 1
 		if get_card_number(card) == SKIP how_much = 2
@@ -395,13 +364,11 @@ function deck_deplete_card(num = 1) {
 	}
 }
 
-function relay_rules(sock) {
-		buffer_seek(buffer,buffer_seek_start,0)
-		buffer_write(buffer,buffer_u8,NET_RELAY_RULE_UPDATE)
-		buffer_write(buffer,buffer_bool, RULE_draw_until_play)
-		buffer_write(buffer,buffer_bool, RULE_allow_stacks)
-		buffer_write(buffer,buffer_bool, RULE_4stack_on_2)
-		network_send_packet(sock,buffer,buffer_tell(buffer))
+function relay_rules() {
+		buffer_process(NET_RELAY_RULE_UPDATE, 
+		[buffer_bool, buffer_bool, buffer_bool], 
+		[RULE_draw_until_play, RULE_allow_stacks, RULE_4stack_on_2])
+		network_send_packet_all()
 }
 
 function version_is_same(client_ver) {
@@ -424,5 +391,4 @@ function stop_game() {
 	add_line(ALERT, "Game end." )
 }
 
-
-window_set_size(320,320)
+#endregion

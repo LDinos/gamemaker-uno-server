@@ -22,11 +22,12 @@ switch(t) {
 			ds_list_add(player_ip_list, ip)
 			ds_list_add(player_name_list, string(sock))
 			ds_list_add(card_number, 0)
-			relay_rules(sock)
-				buffer_seek(buffer,buffer_seek_start,0)
-				buffer_write(buffer,buffer_u8,NET_USER_INTRODUCTION)
-				network_send_packet(sock,buffer,buffer_tell(buffer))	
 			num_players++
+			relay_rules()
+			buffer_seek(buffer,buffer_seek_start,0)
+			buffer_write(buffer,buffer_u8,NET_USER_INTRODUCTION)
+			network_send_packet(sock,buffer,buffer_tell(buffer))	
+			
 		}	
         break;
     case network_type_disconnect:
@@ -47,23 +48,14 @@ switch(t) {
 				else {
 					must_draw_cards = 0
 					if (player_turn >= num_players) player_turn = 0
-					for (var j = 0; j < num_players; j++) {
-						var sock = player_list[| j]
-						buffer_seek(buffer,buffer_seek_start,0)
-						buffer_write(buffer,buffer_u8,NET_DISCONNECT_CHANGE_TURN)
-						buffer_write(buffer,buffer_u8,player_turn)
-						network_send_packet(sock,buffer,buffer_tell(buffer))
-					}
+					buffer_process(NET_DISCONNECT_CHANGE_TURN, [buffer_u8], [player_turn])
+					network_send_packet_all()
 				}
 			}
-			for (var j = 0; j < num_players; j++) {
-				var sock = player_list[| j]
-				buffer_seek(buffer,buffer_seek_start,0)
-				buffer_write(buffer,buffer_u8,NET_RELAY_MESSAGE)
-				buffer_write(buffer,buffer_bool,true)
-				buffer_write(buffer,buffer_string,p_name + " disconnected.")
-				network_send_packet(sock,buffer,buffer_tell(buffer))
-			}
+			var str = p_name + " disconnected."
+			if (game_started) str = p_name + " ragequitted."
+			buffer_process(NET_RELAY_MESSAGE, [buffer_bool, buffer_string], [true, str])
+			network_send_packet_all()
 		}	
 		break;
     case network_type_data:
