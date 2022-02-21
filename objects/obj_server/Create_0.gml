@@ -2,7 +2,6 @@
 
 #region MACROS
 #macro MAX_LINES 17
-#macro MAX_CLIENTS 10
 #macro num_cards 62
 #macro ERROR 0
 #macro SUCCESS 1
@@ -33,8 +32,13 @@
 #macro NET_STOP_GAME 18
 #endregion
 
-global.version = "0.10" //server always checks clients up to its decimal point. eg a client 0.2.2 can join 0.2 server
-window_set_size(320,320)
+ini_open("settings.ini")
+	port = ini_read_real("settings", "port", 6969)
+	max_clients = ini_read_real("settings", "max_clients", 10)
+ini_close()
+global.version = "0.10.1" //current server version
+version_allowances = ["0.10", global.version] //if client has any of these versions, they can join
+window_set_size(460,320)
 
 #region INITIAL FUNCTIONS
 function autocomplete_find(text) {
@@ -95,6 +99,7 @@ RULE_allow_stacks = true;
 RULE_4stack_on_2 = true;
 
 //Log related
+anticheat = true
 autocomplete_text = ""
 log_lines = []
 input_list = [] //array that keeps all strings written by the server user
@@ -127,12 +132,11 @@ network_set_config(network_config_connect_timeout, 6000);
 
 #endregion
 
-var port = 6969
-server = network_create_server(network_socket_tcp, port, MAX_CLIENTS)
+server = network_create_server(network_socket_tcp, port, max_clients)
 if (server < 0) {
 	add_line(ERROR, "Unable to create server. Port may be already in use?")
 } else {
-	add_line(SUCCESS, "Server is open.")
+	add_line(SUCCESS, "Server is open. Port: " + string(port))
 	create_deck()
 }
 
@@ -372,13 +376,10 @@ function relay_rules() {
 }
 
 function version_is_same(client_ver) {
-	if string_length(client_ver) < string_length(global.version) return false;
-	for(var i = 0; i < string_length(global.version); i++) {
-		if string_char_at(client_ver,i+1) != string_char_at(global.version,i+1) {
-			return false;
-		}
+	for(var i = 0; i < array_length(version_allowances); i++) {
+		if (client_ver == version_allowances[i]) {return true}
 	}
-	return true
+	return false
 }
 
 function stop_game() {

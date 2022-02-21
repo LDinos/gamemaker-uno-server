@@ -11,8 +11,8 @@ if keyboard_check_pressed(vk_enter) {
 	var key = variable_struct_get(command_list, input_arr[0])
 	if (key == undefined) add_line(ERROR, "Unknown command. Use 'list' for help")
 	else {
-		if args == "" command_list[$ command]()
-		else command_list[$ command](args)
+		if args == "" command_list[$ command].func()
+		else command_list[$ command].func(args)
 	}
 	input = ""
 	autocomplete_text = ""

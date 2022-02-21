@@ -7,7 +7,7 @@ enum permission_type {
 	IS_PLAYING
 }
 function verify_player_permission(c_id, type){
-	
+	if (!anticheat) return true
 	switch type {
 		
 		//if checking for host, see if the ip is the first player
